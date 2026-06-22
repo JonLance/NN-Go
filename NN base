@@ -1,0 +1,203 @@
+# include <iostream>
+# include <vector>
+# include <cmath>
+# include <cstdlib>
+
+// Use the standard namespace to simplify code in this small example.
+// In larger projects, avoid this and use std:: explicitly.
+using namespace std;
+
+
+// Activation functions transform the weighted sum of inputs
+// into a neuron output. They add nonlinearity to the network.
+double relu(double x){
+    return (x >0)? x : 0;
+}
+double relu_derivative(double x){
+    return (x >0)? 1 : 0;
+}
+double sigmoid(double x){
+    return 1 / (1 + exp(-x));
+}
+
+double sigmoid_derivative(double x){
+    double s = sigmoid(x);
+    return s * (1 - s);
+}
+
+// Mean squared error computes the average squared difference between
+// the predicted outputs and the expected target values.
+double mean_squared_error(const vector<double>& y_true, const vector<double>& y_pred){
+    double sum = 0.0;
+    for(size_t i = 0; i < y_true.size(); i++){
+        sum += pow(y_true[i] - y_pred[i], 2);
+    }
+    return sum / y_true.size();
+}
+
+class NeuralNetwork {
+    public:
+        // weights1 stores connections from input neurons to hidden neurons.
+        // weights2 stores connections from hidden neurons to output neurons.
+        vector<vector<double>> weights1, weights2;
+
+        // biases are added after the weighted sum at each layer.
+        vector<double> bias1, bias2;
+
+        NeuralNetwork(int input_size, int hidden_size, int output_size){
+            // Resize the weight matrices and bias vectors to the correct dimensions.
+            weights1.resize(input_size, vector<double>(hidden_size));
+            bias1.resize(hidden_size);
+
+            weights2.resize(hidden_size, vector<double>(output_size));
+            bias2.resize(output_size);
+
+            initWeights();
+        }
+
+        // Fill weights with random values so the network does not start symmetric.
+        void initWeights(){
+            for(auto &row : weights1){
+                for(auto &w : row){
+                    w = ((double) rand() / RAND_MAX) * 2 - 1; // Random values between -1 and 1
+                }
+            }
+            for(auto &row : weights2){
+                for(auto &w : row){
+                    w = ((double) rand() / RAND_MAX) * 2 - 1; // Random values between -1 and 1
+                }
+            }
+        }
+        // Compute the network output for a single input.
+        // hidden_layer is passed by reference so the hidden activations can be reused.
+        vector<double> forward(const vector<double>& input, vector<double> &hidden_layer){
+            hidden_layer.assign(weights1[0].size(), 0);
+
+            // Multiply input values by the first layer weights.
+            for(size_t i = 0; i < weights1.size(); i++){
+                for(size_t j = 0; j < weights1[0].size(); j++){
+                    hidden_layer[j] += input[i] * weights1[i][j];
+                }
+            }
+
+            // Add hidden biases and apply ReLU activation.
+            for(size_t j = 0; j < hidden_layer.size(); j++){
+                hidden_layer[j] = relu(hidden_layer[j] + bias1[j]);
+            }
+
+            // Compute the hidden-to-output linear combination.
+            vector<double> output_layer(weights2[0].size(), 0);
+            for(size_t i = 0; i < weights2.size(); i++){
+                for(size_t j = 0; j < weights2[0].size(); j++){
+                    output_layer[j] += hidden_layer[i] * weights2[i][j];
+                }
+            }
+
+            // Add biases to the output layer and apply the sigmoid.
+            for(size_t j = 0; j < output_layer.size(); j++){
+                output_layer[j] = sigmoid(output_layer[j] + bias2[j]);
+            }
+            return output_layer;
+        }
+
+        // predict is the public method used after training to get outputs.
+        vector<double> predict(const vector<double>& input){
+            vector<double> hidden_layer;
+            return forward(input, hidden_layer);
+        }
+
+    void train(const vector<vector<double>>& inputs, const vector<vector<double>>& targets, double learning_rate, int epochs){
+        // Loop through the entire dataset many times.
+        for(int e=0; e < epochs; e++){
+            double total_loss = 0.0;
+
+            for(size_t i =0; i < inputs.size(); i++){
+                vector<double> hidden_layer;
+                vector<double> output_layer = forward(inputs[i], hidden_layer);
+
+                // Calculate loss for this sample.
+                double loss = mean_squared_error(targets[i], output_layer);
+                total_loss += loss;
+
+                // Compute gradients for the output layer.
+                vector<double> output_gradients(output_layer.size());
+                for(size_t j =0; j<output_layer.size(); j++){
+                    output_gradients[j] = 2 * (output_layer[j] - targets[i][j]) * sigmoid_derivative(output_layer[j]);
+                }
+
+                // Backpropagate error to hidden layer.
+                vector<double> hidden_gradients(hidden_layer.size());
+                for(size_t j = 0; j < hidden_layer.size(); j++){
+                    hidden_gradients[j] = 0.0;
+                    for(size_t k = 0; k < output_layer.size(); k++){
+                        hidden_gradients[j] += output_gradients[k] * weights2[j][k];
+                    }
+                    hidden_gradients[j] *= relu_derivative(hidden_layer[j]);
+                }
+
+                // Update second-layer weights and biases using the gradients.
+                for(size_t j = 0; j < weights2.size(); j++){
+                    for(size_t k = 0; k < weights2[0].size(); k++){
+                        weights2[j][k] -= learning_rate * output_gradients[k] * hidden_layer[j];
+                    }
+                }
+                for(size_t j = 0; j < bias2.size(); j++){
+                    bias2[j] -= learning_rate * output_gradients[j];
+                }
+
+                // Update first-layer weights and biases.
+                for(size_t j = 0; j < weights1.size(); j++){
+                    for(size_t k = 0; k < weights1[0].size(); k++){
+                        weights1[j][k] -= learning_rate * hidden_gradients[k] * inputs[i][j];
+                    }
+                }
+                for(size_t j = 0; j < bias1.size(); j++){
+                    bias1[j] -= learning_rate * hidden_gradients[j];
+                }
+
+                // Print progress every 1000 epochs.
+                if(e % 1000 == 0){
+                    cout << "Epoch: " << e << ", Loss: " << total_loss / inputs.size() << endl;
+                }
+            }
+
+        }
+    }
+
+};
+
+int main() {
+    NeuralNetwork nn(2,3,1);
+
+    // XOR Training data
+    vector<vector<double>> inputs = {
+        {0,0},
+        {0,1},
+        {1,0},
+        {1,1}
+    };
+    vector<vector<double>> targets = {
+        {0},
+        {1},
+        {1},
+        {0}
+    };
+    nn.train(inputs, targets, 0.05, 100000);
+
+
+
+
+    cout << "\n Training complete. Testing on XOR inputs:\n"<< endl;
+    cout << "predictions after training:" << endl;
+    for(const auto& input : inputs){
+        vector<double> prediction = nn.predict(input);
+        cout << "input: [" << input[0] << ", " << input[1] << "] -> output: " << prediction[0] << endl;
+    }
+
+    vector<double> test_input = {0.1, 0.8};
+    vector<double> test_prediction = nn.predict(test_input);
+    cout << "Test input: [" << test_input[0] << ", " << test_input[1] << "] -> output: " << test_prediction[0] << endl;
+
+
+    return 0;
+}
