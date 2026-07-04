@@ -1,0 +1,132 @@
+
+// -I "C:\C+\SDL3-3.2.16\x86_64-w64-mingw32\include" -L "C:\C+\SDL3-3.2.16\x86_64-w64-mingw32\lib" -lSDL3
+
+
+#define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+// setting up the window and renderer for the game.
+static SDL_Window *window = NULL;
+static SDL_Renderer *renderer = NULL;
+
+
+// Board making
+
+#define BOARD_SIZE 19;
+#define CELL_SIZE 36;
+#define MARGIN 20;
+
+// tracking the state of the board and were the stones were placed.
+// later in the code place a if statement to check if a stone will be taken or can not be placed! return to do. place this in the Iterate function.
+enum CellState {
+    EMPTY = 0,
+    BLACK = 1,
+    WHITE = 2,
+};
+
+struct Board {
+    CellState cells[BOARD_SIZE][BOARD_SIZE];
+    int turn;
+    int score[2];
+    int lastMove[2];
+};
+// defines what turn it is (black or white). and will start with black's turn. because black goes first in go.
+enum turn {
+    BLACK_TURN = 0,
+    WHITE_TURN = 1,
+};
+
+
+/* This function runs once at startup. */
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
+{
+    /* Create the window */
+    if (!SDL_CreateWindowAndRenderer("Hello World", 800, 600, SDL_WINDOW_RESIZABLE, &window, &renderer)) {
+        SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
+        return SDL_APP_FAILURE;
+    }
+
+    // initializes the board to be empty.
+    Board *board = new Board();
+    for (int i = 0; i < BOARD_SIZE; i++) {
+        for (int j = 0; j < BOARD_SIZE; j++) {
+            board->cells[i][j] = EMPTY;
+        }
+    }
+    board->turn = BLACK_TURN;
+    board->score[0] = 0;
+    board->score[1] = 0;
+    board->lastMove[0] = -1;
+    board->lastMove[1] = -1;
+    *appstate = board;
+
+
+
+    return SDL_APP_CONTINUE;
+}
+
+/* This function runs when a new event (mouse input, keypresses, etc) occurs. */
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
+{
+    // closes the program
+    if (event->type == SDL_EVENT_KEY_DOWN ||
+        event->type == SDL_EVENT_QUIT) {
+        return SDL_APP_SUCCESS;  /* end the program, reporting success to the OS. */
+    }
+
+    if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+        int x = event->button.x / scale;
+        int y = event->button.y / scale;
+        Board *board = (Board *)appstate;
+        if (board->cells[x][y] == EMPTY) {
+            board->cells[x][y] = board->turn;
+            board->score[board->turn]++;
+            board->lastMove[0] = x;
+            board->lastMove[1] = y;
+            board->turn = (board->turn == BLACK_TURN) ? WHITE_TURN : BLACK_TURN;
+        }
+
+    }
+
+
+    return SDL_APP_CONTINUE;
+}
+
+/* This function runs once per frame, and is the heart of the program. */
+SDL_AppResult SDL_AppIterate(void *appstate)
+{
+    const char *message = "Hello World!";
+    int w = 0, h = 0;
+    float x, y;
+    const float scale = 4.0f;
+
+    /* Center the message and scale it up */
+    SDL_GetCurrentRenderOutputSize(renderer, &w, &h);
+    SDL_SetRenderScale(renderer, scale, scale);
+    x = ((w / scale) - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE * SDL_strlen(message)) / 2;
+    y = ((h / scale) - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE) / 2;
+
+    /* Draw the message */
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDebugText(renderer, x, y, message);
+    SDL_RenderPresent(renderer);
+
+    return SDL_APP_CONTINUE;
+}
+
+/* This function runs once at shutdown. */
+void SDL_AppQuit(void *appstate, SDL_AppResult result)
+{
+    // removes the renderer and window, freeing up resources. at the end of the program.
+    if (renderer) {
+        SDL_DestroyRenderer(renderer);
+        renderer = NULL;
+    }
+    if (window) {
+        SDL_DestroyWindow(window);
+        window = NULL;
+    }
+
+}
