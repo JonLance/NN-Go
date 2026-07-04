@@ -68,12 +68,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 /* This function runs when a new event (mouse input, keypresses, etc) occurs. */
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
-    // closes the program
+ // closes the program
     if (event->type == SDL_EVENT_KEY_DOWN ||
         event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;  /* end the program, reporting success to the OS. */
     }
-
+    // place the stones on the board and should place them in the correct position
     if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
         int x = event->button.x / scale;
         int y = event->button.y / scale;
@@ -88,6 +88,22 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 
     }
 
+    // passing turns and checking for two players to pass consecutively to end the game then will count the score in the end. should place in the iterative loop but maybe the end of event loop
+    if (event->type == SDL_EVENT_BUTTON_ENTER) {
+    
+        Board *board = (Board *)appstate;
+        if (board->turn == BLACK_TURN) {
+            board->turn = WHITE_TURN;
+            passes++;
+        } else {
+            board->turn = BLACK_TURN;
+            passes++;
+        }
+        if (board->turn == BLACK_TURN || board->turn == WHITE_TURN && passes == 1) {
+            return SDL_APP_SUCCESS;
+        }
+    }
+
 
     return SDL_APP_CONTINUE;
 }
@@ -95,24 +111,37 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 /* This function runs once per frame, and is the heart of the program. */
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
-    const char *message = "Hello World!";
-    int w = 0, h = 0;
-    float x, y;
-    const float scale = 4.0f;
+        Board *board = (Board *)appstate;
+    // looking through the board
+    for (int i = 0; i < BOARD_SIZE; i++) {
+        for (int j = 0; j < BOARD_SIZE; j++) {
+            // drawing the stones
+            if (board->cells[i][j] == BLACK_STONE) {
+                SDL_Rect rect = { i * CELL_SIZE, j * CELL_SIZE, CELL_SIZE, CELL_SIZE };
+                SDL_RenderFillRect(renderer, &rect);
+            } else if (board->cells[i][j] == WHITE_STONE) {
+                SDL_Rect rect = { i * CELL_SIZE, j * CELL_SIZE, CELL_SIZE, CELL_SIZE };
+                SDL_RenderFillRect(renderer, &rect);
+            }
 
-    /* Center the message and scale it up */
-    SDL_GetCurrentRenderOutputSize(renderer, &w, &h);
-    SDL_SetRenderScale(renderer, scale, scale);
-    x = ((w / scale) - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE * SDL_strlen(message)) / 2;
-    y = ((h / scale) - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE) / 2;
+            // drawing the board cells
+            if (board->cells[i][j] == EMPTY) {
+                SDL_Rect rect = { i * CELL_SIZE, j * CELL_SIZE, CELL_SIZE, CELL_SIZE };
+                SDL_RenderDrawRect(renderer, &rect);
+            }
 
-    /* Draw the message */
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    SDL_RenderDebugText(renderer, x, y, message);
-    SDL_RenderPresent(renderer);
-
+            // removing the stones if they are surrounded by a different color
+            // should be fixed so that the stones of the same color are add there libitys to gether and not make them invisible
+            if (board->cells[i][j] == BLACK_STONE && board->cells[i-1][j] == WHITE_STONE && board->cells[i+1][j] == WHITE_STONE && board->cells[i][j-1] == WHITE_STONE && board->cells[i][j+1] == WHITE_STONE) {
+                SDL_Rect rect = { i * CELL_SIZE, j * CELL_SIZE, CELL_SIZE, CELL_SIZE };
+                SDL_RenderDrawRect(renderer, &rect);
+            }
+            else if(board->cells[i][j] == WHITE_STONE && board->cells[i-1][j] == BLACK_STONE && board->cells[i+1][j] == BLACK_STONE && board->cells[i][j-1] == BLACK_STONE && board->cells[i][j+1] == BLACK_STONE) {
+                SDL_Rect rect = { i * CELL_SIZE, j * CELL_SIZE, CELL_SIZE, CELL_SIZE };
+                SDL_RenderDrawRect(renderer, &rect);
+            }
+        }
+    }
     return SDL_APP_CONTINUE;
 }
 
