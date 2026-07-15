@@ -12,7 +12,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <random>
-
+#include <fstream>
 using namespace std;
 
 // Renamed from BOARD_SIZE so it doesn't collide with NNGo::BOARD_SIZE below.
@@ -71,6 +71,8 @@ public:
 
     double crossEntropyLoss(const std::vector<double>& y_true,
                             const std::vector<double>& y_pred) const;
+
+// add a save for the wheights so I do not have to retain every time
 
 private:
     void softmax();
