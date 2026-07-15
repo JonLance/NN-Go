@@ -1,7 +1,7 @@
 
 // g++ front.cpp -o name.exe -I "heder file locations" -L "lib file locations" -lSDL3
 
-
+ // add a player to choss so that if player is -- to 0 then it is a person and should wat for in put and if it is ==1 then it is an ai.
 #include <sys/stat.h>
 #define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
 #include <SDL3/SDL.h>
