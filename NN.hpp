@@ -4,6 +4,7 @@
  *         layer1   256 -> 256
  *         layer2   256 -> 256
  * output:          256 -> 361 (softmax)
+ * need to add away to have multiple hidden layers
  */
 
 #include <vector>
@@ -13,6 +14,8 @@
 #include <cstdlib>
 #include <random>
 #include <fstream>
+
+
 using namespace std;
 
 // Renamed from BOARD_SIZE so it doesn't collide with NNGo::BOARD_SIZE below.
@@ -71,15 +74,74 @@ public:
 
     double crossEntropyLoss(const std::vector<double>& y_true,
                             const std::vector<double>& y_pred) const;
+    bool save(const std::string& filename){
+        std::ofstream out(filename);
+        if (!out.is_open()) {
+            std::cerr << "Error: Could not open file to save weights: " << filename << std::endl;
+            return false;
+        }
 
-// add a save for the wheights so I do not have to retain every time
+        out << HIDDEN_LAYERS << " " << HIDDEN_NEURONS << endl;
+        for (int l = 0; l <= HIDDEN_LAYERS; ++l) {
+            int rows = (l == HIDDEN_LAYERS) ? OUTPUT_SIZE : HIDDEN_NEURONS;
+            int cols = layerInputSize(l);
+
+            // save weights and biases
+            for (int i = 0; i < rows; ++i) {
+                for (int j = 0; j < cols; ++j) {
+                    out << weights[l][i][j] << " ";
+                }
+            }
+            for (int i = 0; i < HIDDEN_NEURONS; ++i) {
+                out << biases[l][i] << " ";
+            }
+            out << endl;
+        }
+
+        out.close();
+        return true;
+    }
 
 private:
     void softmax();
     int  layerInputSize(int l) const { return l == 0 ? INPUT_SIZE : HIDDEN_NEURONS; }
 };
 
-// ---------------------------------------------------------------------------
+bool NNGo::load(const std::string& filename) {
+    std::ifstream in(filename);
+    if (!in.is_open()) {
+        cout << "Failed to open file: " << filename << endl;
+        return false;
+    }
+
+    int file_hidden_layers, file_hidden_neurons;
+    if (!(in >> file_hidden_layers >> file_hidden_neurons)) {
+        cout << "Failed to read hidden layers/neurons from file: " << filename << endl;
+        return false;
+    }
+    if (file_hidden_layers != HIDDEN_LAYERS || file_hidden_neurons != HIDDEN_NEURONS) {
+        cout << "Hidden layers/neurons mismatch: " << file_hidden_layers << "x" << file_hidden_neurons << " vs " << HIDDEN_LAYERS << "x" << HIDDEN_NEURONS << endl;
+        return false;
+    }
+
+    weights.assign(HIDDEN_LAYERS + 1, {});
+    biases.assign(HIDDEN_LAYERS + 1, {});
+
+    for (int l = 0; l <= HIDDEN_LAYERS; ++l) {
+        int rows = (l == HIDDEN_LAYERS) ? OUTPUT_SIZE : HIDDEN_NEURONS;
+        int cols = layerInputSize(l);
+        weights[l].assign(rows, {});
+        biases[l].assign(rows, 0.0);
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                in >> weights[l][i][j];
+            }
+            in >> biases[l][i];
+        }
+        in.close();
+        return true;
+    }
+}
 
 void NNGo::initWeights() {
     std::mt19937 rng(std::random_device{}());
@@ -153,8 +215,7 @@ void NNGo::forwardPropagate(const std::vector<std::vector<std::vector<double>>>&
     softmax();
 }
 
-double NNGo::crossEntropyLoss(const std::vector<double>& y_true,
-                              const std::vector<double>& y_pred) const {
+double NNGo::crossEntropyLoss(const std::vector<double>& y_true,const std::vector<double>& y_pred) const {
     double loss = 0.0;
     for (size_t i = 0; i < y_true.size(); ++i)
         loss += -y_true[i] * std::log(std::max(y_pred[i], 1e-12));
@@ -167,11 +228,12 @@ void NNGo::backwardPropagate(const std::vector<double>& y_true) {
 
     // Output delta: softmax + cross-entropy => (prob - target).
     delta[HIDDEN_LAYERS].resize(OUTPUT_SIZE);
-    for (int o = 0; o < OUTPUT_SIZE; ++o)
+    for (int o = 0; o < OUTPUT_SIZE; ++o){
         delta[HIDDEN_LAYERS][o] = probs[o] - y_true[o];
+    }
 
-    // Hidden deltas, top-down, using the (not-yet-updated) weights above.
-    for (int l = HIDDEN_LAYERS - 1; l >= 0; --l) {
+    // Hidden deltas, top-down, using the weights above.
+    for (int l = HIDDEN_LAYERS -1; l >= 0; --l){
         int nextSize = (l == HIDDEN_LAYERS - 1) ? OUTPUT_SIZE : HIDDEN_NEURONS;
         delta[l].assign(HIDDEN_NEURONS, 0.0);
         for (int i = 0; i < HIDDEN_NEURONS; ++i) {
@@ -182,16 +244,14 @@ void NNGo::backwardPropagate(const std::vector<double>& y_true) {
             delta[l][i] = d;
         }
     }
-
-    // Now apply all updates.
-    // Output layer.
+    // biases and weights update for the hidden layers
     for (int o = 0; o < OUTPUT_SIZE; ++o) {
         biases[HIDDEN_LAYERS][o] -= learning_rate * delta[HIDDEN_LAYERS][o];
-        for (int i = 0; i < HIDDEN_NEURONS; ++i)
-            weights[HIDDEN_LAYERS][o][i] -=
-                learning_rate * delta[HIDDEN_LAYERS][o] * hidden[HIDDEN_LAYERS - 1][i];
+        for (int i = 0; i < HIDDEN_NEURONS; ++i){
+            weights[HIDDEN_LAYERS][o][i] -= learning_rate * delta[HIDDEN_LAYERS][o] * hidden[HIDDEN_LAYERS - 1][i];
+        }
     }
-    // Hidden layers.
+
     for (int l = 0; l < HIDDEN_LAYERS; ++l) {
         int inSize = layerInputSize(l);
         for (int i = 0; i < HIDDEN_NEURONS; ++i) {
@@ -204,9 +264,9 @@ void NNGo::backwardPropagate(const std::vector<double>& y_true) {
     }
 }
 
-void NNGo::train(const std::vector<std::vector<std::vector<std::vector<double>>>>& X,
-                 const std::vector<std::vector<double>>& y,
-                 int epochs) {
+
+
+void NNGo::train(const std::vector<std::vector<std::vector<std::vector<double>>>>& X,const std::vector<std::vector<double>>& y,int epochs) {
     for (int e = 0; e < epochs; ++e) {
         double epochLoss = 0.0;
         for (size_t n = 0; n < X.size(); ++n) {
@@ -214,8 +274,26 @@ void NNGo::train(const std::vector<std::vector<std::vector<std::vector<double>>>
             epochLoss += crossEntropyLoss(y[n], probs);
             backwardPropagate(y[n]);
         }
-        std::cout << "epoch " << e
-                  << "  avg loss " << epochLoss / X.size() << "\n";
+        std::cout << "epoch " << e << "  avg loss " << epochLoss / X.size() << "\n";
+        if (e % 100 == 0) {
+            save("model_weights.txt");
+        }
     }
 }
 
+
+int sampleAction(const std::vector<double>& probs, const std::vector<bool>& legal_moves) {
+    std::vector<double> legal_probs( probs.size(), 0.0);
+    // move filter
+    for (size_t i = 0; i < probs.size(); ++i) {
+        if (legal_moves[i]) {
+            legal_probs[i] = probs[i];
+        }
+    }
+
+    if (legal_probs.empty()) {
+
+    }
+
+
+}
