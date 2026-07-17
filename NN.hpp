@@ -1,13 +1,4 @@
-/*
- * input: 3 channels x 19 x 19  = 1083 values (flattened)
- * hidden: layer0  1083 -> 256
- *         layer1   256 -> 256
- *         layer2   256 -> 256
- * output:          256 -> 361 (softmax)
- *
- *should change the way hidden layers are made with changing hidden_layers between the hidden layers
- * this is still buggy not the finshed version
- */
+
 #ifndef NN_HPP
 #define NN_HPP
 
