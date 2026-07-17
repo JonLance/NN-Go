@@ -13,7 +13,7 @@
 
 
 
-// Renamed from BOARD_SIZE so it doesn't collide with NNGo::BOARD_SIZE below.
+
 
 #ifndef GO_BOARD_SIZE
 #define GO_BOARD_SIZE 19
