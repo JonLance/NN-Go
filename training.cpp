@@ -118,17 +118,27 @@ bool makeMove(Board *board, int x, int y, CellState color) {
 int sampleAction(const Board* board, const std::vector<double>& probs) {
     std::vector<double> legal_probs(probs.size(), 0.0);
     bool has_legal = false;
-
+    double total_prob = 0.0;
     for (int i = 0; i < 19 * 19; ++i) {
         int r = i / 19;
         int c = i % 19;
         if (board->cells[r][c] == EMPTY) {
             legal_probs[i] = probs[i];
+            total_prob += probs[i];
             has_legal = true;
         }
     }
 
     if (!has_legal) return -1; // -1 signifies a pass natively
+
+    if (total_prob <= 0.0){
+        for (int i = 0; i < 19 * 19; ++i) {
+            int r = i / 19;
+            int c = i % 19;
+            legal_probs[i] = (board->cells[r][c] == EMPTY) ? 1.0 : 0.0;
+        }
+        total_prob = 1.0;
+    }
 
     std::mt19937 gen(std::random_device{}());
     std::discrete_distribution<int> dist(legal_probs.begin(), legal_probs.end());
@@ -237,10 +247,7 @@ int main() {
             if (makeMove(&board, x, y, board.turn)) {
                 memsteps.push_back({inputs, move, activePlayer});
                 turns++;
-            }
-            if (turns++) {
-                board.passes = 0;
-                board.turn = (board.turn == BLACK_STONE) ? WHITE_STONE : BLACK_STONE;
+                board.passes = 0;   // move succeeded, reset pass streak
             }
 
         }
