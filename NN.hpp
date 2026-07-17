@@ -1,3 +1,16 @@
+/*
+ * input: 3 channels x 19 x 19  = 1083 values (flattened)
+ * hidden: layer0  1083 -> 256
+ *         layer1   256 -> 256
+ *         layer2   256 -> 256
+ * output:          256 -> 361 (softmax)
+ *
+ *should change the way hidden layers are made with changing hidden_layers between the hidden layers
+ * this is still buggy not the finshed version
+ */
+#ifndef GO_BOARD_SIZE
+#define GO_BOARD_SIZE 19
+#endif
 
 #ifndef NN_HPP
 #define NN_HPP
@@ -11,13 +24,6 @@
 #include <random>
 #include <fstream>
 
-
-
-
-
-#ifndef GO_BOARD_SIZE
-#define GO_BOARD_SIZE 19
-#endif
 
 enum CellState {
     EMPTY = 0,
@@ -46,44 +52,43 @@ struct memstep {
 
 class NNGo {
 public:
-    static constexpr int BOARD_SIZE     = 19;
+    static constexpr int BOARD_SIZE = 19;
     static constexpr int INPUT_CHANNELS = 3;
 
-    static constexpr int INPUT_SIZE     = INPUT_CHANNELS * BOARD_SIZE * BOARD_SIZE; // 1083
-    static constexpr int OUTPUT_SIZE    = BOARD_SIZE * BOARD_SIZE;                  // 361
+    static constexpr int INPUT_SIZE = INPUT_CHANNELS * BOARD_SIZE * BOARD_SIZE; // 1083
+    static constexpr int OUTPUT_SIZE = BOARD_SIZE * BOARD_SIZE;                  // 361
 
-    static constexpr int HIDDEN_LAYERS  = 5;
+    static constexpr int HIDDEN_LAYERS = 5;
     static constexpr int HIDDEN_NEURONS = 512;
 
     double learning_rate = 0.01;
 
     // State captured during the forward pass (needed by backprop).
-    std::vector<double>              input_flat;   // INPUT_SIZE
+    std::vector<double> input_flat;   // INPUT_SIZE
     std::vector<std::vector<double>> hidden;       // [layer][neuron]
-    std::vector<double>              logits;       // OUTPUT_SIZE (pre-softmax)
-    std::vector<double>              probs;        // OUTPUT_SIZE (post-softmax)
+    std::vector<double> logits;       // OUTPUT_SIZE (pre-softmax)
+    std::vector<double> probs;        // OUTPUT_SIZE (post-softmax)
 
     // weights[l][neuron][input], biases[l][neuron].
     // l in [0, HIDDEN_LAYERS-1] are hidden layers; l == HIDDEN_LAYERS is output.
     std::vector<std::vector<std::vector<double>>> weights;
-    std::vector<std::vector<double>>              biases;
+    std::vector<std::vector<double>> biases;
 
     void initWeights();
     void forwardPropagate(const std::vector<std::vector<std::vector<double>>>& X);
     void backwardPropagate(const std::vector<double>& y_true, double reward);
     void train(const std::vector<std::vector<std::vector<std::vector<double>>>>& X,const std::vector<std::vector<double>>& y,int epochs);
     void trainOnEpisodes(const std::vector<memstep>& episodes, CellState winner);
-    bool load(const std::string& filename);
     double crossEntropyLoss(const std::vector<double>& y_true,const std::vector<double>& y_pred) const;
     bool save(const std::string& filename);
+    bool load(const std::string& filename);
 
 private:
     void softmax();
     int  layerInputSize(int l) const { return l == 0 ? INPUT_SIZE : HIDDEN_NEURONS; }
 };
 #endif
-bool NNGo::save(const std::string& filename)
-{
+bool NNGo::save(const std::string& filename) {
     std::ofstream out(filename);
     if (!out.is_open()) {
         std::cerr << "Error: Could not open file to save weights: " << filename << std::endl;
@@ -91,21 +96,27 @@ bool NNGo::save(const std::string& filename)
     }
 
     out << HIDDEN_LAYERS << " " << HIDDEN_NEURONS << std::endl;
+
     for (int l = 0; l <= HIDDEN_LAYERS; ++l) {
         int rows = (l == HIDDEN_LAYERS) ? OUTPUT_SIZE : HIDDEN_NEURONS;
         int cols = layerInputSize(l);
 
-        // save weights and biases
+        // Save weights
         for (int i = 0; i < rows; ++i) {
             for (int j = 0; j < cols; ++j) {
                 out << weights[l][i][j] << " ";
             }
         }
-        for (int i = 0; i < HIDDEN_NEURONS; ++i) {
+
+        // Save biases (Using 'rows' ensures it matches output layer size safely)
+        for (int i = 0; i < rows; ++i) {
             out << biases[l][i] << " ";
         }
         out << std::endl;
     }
+
+    out.close();
+    return true;
 }
 static inline double relu(double x)            { return x > 0 ? x : 0.0; }
 static inline double relu_derivative(double x) { return x > 0 ? 1.0 : 0.0; }
@@ -155,7 +166,7 @@ void NNGo::initWeights() {
     // Hidden layers.
     for (int l = 0; l < HIDDEN_LAYERS; ++l) {
         int inSize = layerInputSize(l);
-        double stddev = std::sqrt(2.0 / inSize);          // He init for ReLU
+        double stddev = std::sqrt(2.0 / inSize);
         std::normal_distribution<double> dist(0.0, stddev);
 
         weights[l].assign(HIDDEN_NEURONS, std::vector<double>(inSize));
@@ -287,7 +298,7 @@ void NNGo::train(const std::vector<std::vector<std::vector<std::vector<double>>>
 }
 
 
-int sampleAction(const Board* board, const std::vector<double>& probs) {
+/*inline int sampleAction(const Board* board, const std::vector<double>& probs) {
     std::vector<double> legal_probs(probs.size(), 0.0);
     bool has_legal = false;
 
@@ -306,6 +317,8 @@ int sampleAction(const Board* board, const std::vector<double>& probs) {
     std::discrete_distribution<int> dist(legal_probs.begin(), legal_probs.end());
     return dist(gen);
 }
+should remove or change for somthing else
+*/
 
 void NNGo::trainOnEpisodes(const std::vector<memstep>& episodes, CellState winner) {
     for (const memstep& step : episodes) {
