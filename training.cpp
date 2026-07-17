@@ -12,27 +12,6 @@
 #define BOARD_SIZE 19
 
 
-enum CellState {
-    EMPTY = 0,
-    BLACK_STONE = 1,
-    WHITE_STONE = 2,
-};
-struct Board {
-    CellState cells[BOARD_SIZE][BOARD_SIZE];
-    CellState turn;
-    int score[2]; // score[0] is black, score[1] is white
-    int lastMove[2];
-    int passes;
-    bool winner; // let true be black win, false be white win
-
-};
-
-struct memstep {
-    std::vector<std::vector<std::vector<double>>> state;
-    int action;
-    CellState player;
-};
-
 void  initBoard(Board *board) {
     for (int r = 0; r < BOARD_SIZE; ++r) {
         for (int c = 0; c < BOARD_SIZE; ++c) {
