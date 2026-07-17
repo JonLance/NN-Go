@@ -4,7 +4,9 @@
  *         layer1   256 -> 256
  *         layer2   256 -> 256
  * output:          256 -> 361 (softmax)
- * need to add away to have multiple hidden layers
+ *
+ *should change the way hidden layers are made with changing hidden_layers between the hidden layers
+ * this is still buggy not the finshed version
  */
 
 #include <vector>
@@ -23,7 +25,7 @@
 #define GO_BOARD_SIZE 19
 #endif
 
-enum CellState {
+/*enum CellState {
     EMPTY = 0,
     BLACK_STONE = 1,
     WHITE_STONE = 2,
@@ -44,7 +46,7 @@ struct memstep {
     std::vector<std::vector<std::vector<double>>> state;
     int action_taken;
     CellState player;
-};
+    };*/
 
 // ---- free helper activations (kept; used by nothing here but handy elsewhere)
 static inline double relu(double x)            { return x > 0 ? x : 0.0; }
@@ -279,7 +281,7 @@ void NNGo::train(const std::vector<std::vector<std::vector<std::vector<double>>>
         for (size_t n = 0; n < X.size(); ++n) {
             forwardPropagate(X[n]);
             epochLoss += crossEntropyLoss(y[n], probs);
-            backwardPropagate(y[n]);
+            backwardPropagate([y][n]);
         }
         std::cout << "epoch " << e << "  avg loss " << epochLoss / X.size() << "\n";
         if (e % 100 == 0) {
@@ -311,7 +313,7 @@ int sampleAction(const std::vector<double>& probs, const std::vector<bool>& lega
     std::discrete_distribution<> dist(legal_probs.begin(), legal_probs.end());
     double r = dist(gen);
     double cumulative = 0.0;
-    
+
     for (size_t i = 0; i < legal_probs.size(); ++i) {
         cumulative += legal_probs[i];
         if (cumulative >= r) {
@@ -330,8 +332,7 @@ void NNGo::trainOnEpisodes(const std::vector<memstep>& episodes, CellState winne
         y_true[step.action_taken] = 1.0;
 
         double reward = (step.player == winner) ? 1.0 : 0.0;
-        
+
         backwardPropagate(y_true, reward);
     }
 }
-
