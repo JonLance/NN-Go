@@ -6,7 +6,7 @@
 #include <random>
 #include "NN.hpp"
 
-// still needs improvement
+// fix the errors between the NN.hpp and traning.cpp
 
 // Macro definitions
 #define BOARD_SIZE 19
@@ -20,7 +20,7 @@ enum CellState {
 struct Board {
     CellState cells[BOARD_SIZE][BOARD_SIZE];
     CellState turn;
-    int score[2];
+    int score[2]; // score[0] is black, score[1] is white
     int lastMove[2];
     int passes;
     bool winner; // let true be black win, false be white win
@@ -31,7 +31,6 @@ struct memstep {
     std::vector<std::vector<std::vector<double>>> state;
     int action;
     CellState player;
-
 };
 
 void  initBoard(Board *board) {
@@ -126,6 +125,8 @@ bool makeMove(Board *board, int x, int y, CellState color) {
     bool visited[BOARD_SIZE][BOARD_SIZE] = {false};
     if(!groupLiberties(board, x, y, player, visited)) {
         board->cells[x][y] = EMPTY;
+        if(player == BLACK_STONE) board->score[0] -= capts;
+        else board->score[1] -= capts;
         return false;
     }
     // Switch to the opponent's turn
@@ -135,42 +136,27 @@ bool makeMove(Board *board, int x, int y, CellState color) {
 }
 
 
-int Moves (const Board *board, const std::vector<double> &probs) {
-    std::vector<double> probsOfIlligal(probs.size(), 0.0);
-    int count = 0;
+int sampleAction(const Board* board, const std::vector<double>& probs) {
+    std::vector<double> legal_probs(probs.size(), 0.0);
+    bool has_legal = false;
 
-    for (int i = 0; i < BOARD_SIZE * BOARD_SIZE; ++i) {
-        // g = x, f = y to not mess with the x and y of the boad
-        int g = i / BOARD_SIZE;
-        int f = i % BOARD_SIZE;
-        if (board->cells[g][f] == EMPTY) {
-            probsOfIlligal[i] = probs[i];
-            count++;
+    for (int i = 0; i < 19 * 19; ++i) {
+        int r = i / 19;
+        int c = i % 19;
+        if (board->cells[r][c] == EMPTY) {
+            legal_probs[i] = probs[i];
+            has_legal = true;
         }
     }
 
-    if (count <= 0){
-        //can not move
-        // might have to force a move if the it is deadlocked
-        return -1; // should return pass
-    }
-    for(double &p : probsOfIlligal) {
-        p /= count;
-    }
+    if (!has_legal) return -1; // -1 signifies a pass natively
 
-    // distribution sample
     std::mt19937 gen(std::random_device{}());
-    std::discrete_distribution<> dist(probsOfIlligal.begin(), probsOfIlligal.end());
-
-    double r = dist(gen);
-    double sample = 0.0;
-    for (int i = 0; i < probsOfIlligal.size(); ++i) {
-        sample += probsOfIlligal[i];
-        if (sample <= r) return i;
-    }
-    return probsOfIlligal.size() - 1;
+    std::discrete_distribution<int> dist(legal_probs.begin(), legal_probs.end());
+    return dist(gen);
 }
-bool winner(Board &board, int Bcapts, int Wdeadstones, int Wcapts, int Bdeadstones) {
+// scoring & territory tracking
+CellState winner(Board &board) {
     /*
      * the winner is the player with the higher score
      * the score is calculated by
@@ -191,7 +177,8 @@ bool winner(Board &board, int Bcapts, int Wdeadstones, int Wcapts, int Bdeadston
                 int territory = 0;
                 bool touchesBlack = false;
                 bool touchesWhite = false;
-
+                // finding the territory with flood fill of each player for scoring.
+                // this should be add to the frontend for scoring at the end of the game.
                 std::function<void(int, int)> dfs = [&](int x, int y) {
                     if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE || visited[x][y]) return;
 
@@ -213,30 +200,24 @@ bool winner(Board &board, int Bcapts, int Wdeadstones, int Wcapts, int Bdeadston
                 };
                 dfs(i, j);
                 if (!touchesBlack && touchesWhite) {
-                    scoreB += territory;
-                } else if (touchesBlack && !touchesWhite) {
                     scoreW += territory;
+                } else if (touchesBlack && !touchesWhite) {
+                    scoreB += territory;
                 }
             }
         }
     }
 
-    scoreB += Bcapts;
-    scoreW += Wcapts;
-    scoreB += Bdeadstones * 2;
-    scoreW += Wdeadstones * 2;
 
     if (scoreB > scoreW) {
         std::cout << "Black wins!" << std::endl;
         board.winner = false;
-    } else if (scoreB < scoreW) {
+        return BLACK_STONE; // Correctly returns CellState instead of bool
+    } else {
         std::cout << "White wins!" << std::endl;
         board.winner = true;
-    } else {
-        std::cout << "It's a tie!" << std::endl;
+        return WHITE_STONE; // Correctly returns CellState instead of bool
     }
-    std::cout << "Black score: " << scoreB << ", White score: " << scoreW << std::endl;
-    return board.winner;
 }
 
 int main() {
@@ -263,16 +244,19 @@ int main() {
             // forward propagation to get predictions
             ai.forwardPropagate(inputs);
             // predictions and sampling actions
-            int move = sampleFromDistribution(ai.probs, board);
+            int move = sampleAction(&board, ai.probs);
             if (move == -1) {
                 board.passes++;
-                if (board.passes == 2) break;
+                board.turn = (board.turn == BLACK_STONE) ? WHITE_STONE : BLACK_STONE;
+                if (board.passes >= 2) break;
                 continue;
             }
+
             int x = move / BOARD_SIZE;
             int y = move % BOARD_SIZE;
+
             if (makeMove(&board, x, y, board.turn)) {
-                memsteps.push_back({x, y, board.turn});
+                memsteps.push_back({inputs, move, activePlayer});
                 turns++;
             }
             if (turns++) {
@@ -282,5 +266,14 @@ int main() {
 
         }
 
+        CellState winningPlayer = winner(board);
+        ai.trainOnEpisodes(memsteps, winningPlayer);
+
+        if(i % 100 == 0) {
+            std::cout << "Finished game " << i << " | Winner: " << (winningPlayer == BLACK_STONE ? "Black" : "White") << " | File Checkpoint Saved." << std::endl;
+            ai.save("model_weights.txt");
+        }
+
     }
+    return 0;
 }
