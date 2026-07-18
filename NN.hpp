@@ -143,7 +143,7 @@ bool NNGo::load(const std::string& filename) {
     for (int l = 0; l <= HIDDEN_LAYERS; ++l) {
         int rows = (l == HIDDEN_LAYERS) ? OUTPUT_SIZE : HIDDEN_NEURONS;
         int cols = layerInputSize(l);
-        weights[l].assign(rows, {});
+        weights[l].assign(rows, std::vector<double>(cols));
         biases[l].assign(rows, 0.0);
         for (int i = 0; i < rows; ++i) {
             for (int j = 0; j < cols; ++j) {
