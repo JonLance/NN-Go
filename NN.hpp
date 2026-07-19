@@ -37,6 +37,7 @@ struct Board {
     int score[2];
     int lastMove[2];
     int passes;
+    double scoreMargin;
     int player;
     bool winner;
 };
@@ -47,13 +48,16 @@ struct memstep {
     std::vector<std::vector<std::vector<double>>> state;
     int action;
     CellState player;
-    };
+    int captsMade;
+    int stonesLost;
+    int connections;
+};
 
 
 class NNGo {
 public:
     static constexpr int BOARD_SIZE = 19;
-    static constexpr int INPUT_CHANNELS = 3;
+    static constexpr int INPUT_CHANNELS = 5;
 
     static constexpr int INPUT_SIZE = INPUT_CHANNELS * BOARD_SIZE * BOARD_SIZE; // 1083
     static constexpr int OUTPUT_SIZE = BOARD_SIZE * BOARD_SIZE;                  // 361
@@ -78,7 +82,7 @@ public:
     void forwardPropagate(const std::vector<std::vector<std::vector<double>>>& X);
     void backwardPropagate(const std::vector<double>& y_true, double reward);
     void train(const std::vector<std::vector<std::vector<std::vector<double>>>>& X,const std::vector<std::vector<double>>& y,int epochs);
-    void trainOnEpisodes(const std::vector<memstep>& episodes, CellState winner);
+    void trainOnEpisodes(const std::vector<memstep>& episodes, CellState winner, double finalMargin);
     double crossEntropyLoss(const std::vector<double>& y_true,const std::vector<double>& y_pred) const;
     bool save(const std::string& filename);
     bool load(const std::string& filename);
@@ -205,7 +209,6 @@ void NNGo::forwardPropagate(const std::vector<std::vector<std::vector<double>>>&
                 input_flat[c * BOARD_SIZE * BOARD_SIZE + r * BOARD_SIZE + col] = X[c][r][col];
 
     hidden.assign(HIDDEN_LAYERS, std::vector<double>(HIDDEN_NEURONS));
-
     for (int l = 0; l < HIDDEN_LAYERS; ++l) {
         int inSize = layerInputSize(l);
         for (int i = 0; i < HIDDEN_NEURONS; ++i) {
@@ -237,37 +240,49 @@ double NNGo::crossEntropyLoss(const std::vector<double>& y_true,const std::vecto
 }
 
 void NNGo::backwardPropagate(const std::vector<double>& y_true, double reward) {
-    // delta[l] has one entry per neuron in layer l; delta[HIDDEN_LAYERS] is output.
     std::vector<std::vector<double>> delta(HIDDEN_LAYERS + 1);
+    double adjustedReward = reward;
 
-    double adjustedReward = (reward == 0.0) ? -1.0 : 1.0;
-
-    // Output delta: softmax + cross-entropy => (prob - target).
+    // Output delta
     delta[HIDDEN_LAYERS].resize(OUTPUT_SIZE);
-    for (int o = 0; o < OUTPUT_SIZE; ++o){
-        delta[HIDDEN_LAYERS][o] = (probs[o] - y_true[o]) * adjustedReward;
+    for (int o = 0; o < OUTPUT_SIZE; ++o) {
+        double d = (probs[o] - y_true[o]) * adjustedReward;
+        
+        // Gradient clipping for output layer
+        if (d > 5.0) d = 5.0;
+        if (d < -5.0) d = -5.0;
+        
+        delta[HIDDEN_LAYERS][o] = d;
     }
 
-    // Hidden deltas, top-down, using the weights above.
-    for (int l = HIDDEN_LAYERS -1; l >= 0; --l){
+    // Hidden deltas, top-down
+    for (int l = HIDDEN_LAYERS - 1; l >= 0; --l) {
         int nextSize = (l == HIDDEN_LAYERS - 1) ? OUTPUT_SIZE : HIDDEN_NEURONS;
         delta[l].assign(HIDDEN_NEURONS, 0.0);
         for (int i = 0; i < HIDDEN_NEURONS; ++i) {
             double d = 0.0;
-            for (int k = 0; k < nextSize; ++k)
+            for (int k = 0; k < nextSize; ++k) {
                 d += delta[l + 1][k] * weights[l + 1][k][i];
+            }
             d *= relu_derivative(hidden[l][i]);
+
+            // GRADIENT CLIPPING: Prevents exploding gradients / NaNs
+            if (d > 5.0) d = 5.0;
+            if (d < -5.0) d = -5.0;
+
             delta[l][i] = d;
         }
     }
-    // biases and weights update for the hidden layers
+
+    // Biases and weights update for the output layer
     for (int o = 0; o < OUTPUT_SIZE; ++o) {
         biases[HIDDEN_LAYERS][o] -= learning_rate * delta[HIDDEN_LAYERS][o];
-        for (int i = 0; i < HIDDEN_NEURONS; ++i){
+        for (int i = 0; i < HIDDEN_NEURONS; ++i) {
             weights[HIDDEN_LAYERS][o][i] -= learning_rate * delta[HIDDEN_LAYERS][o] * hidden[HIDDEN_LAYERS - 1][i];
         }
     }
 
+    // Biases and weights update for the hidden layers
     for (int l = 0; l < HIDDEN_LAYERS; ++l) {
         int inSize = layerInputSize(l);
         for (int i = 0; i < HIDDEN_NEURONS; ++i) {
@@ -298,36 +313,40 @@ void NNGo::train(const std::vector<std::vector<std::vector<std::vector<double>>>
 }
 
 
-/*inline int sampleAction(const Board* board, const std::vector<double>& probs) {
-    std::vector<double> legal_probs(probs.size(), 0.0);
-    bool has_legal = false;
 
-    for (int i = 0; i < 19 * 19; ++i) {
-        int r = i / 19;
-        int c = i % 19;
-        if (board->cells[r][c] == EMPTY) {
-            legal_probs[i] = probs[i];
-            has_legal = true;
-        }
-    }
-
-    if (!has_legal) return -1; // -1 signifies a pass natively
-
-    std::mt19937 gen(std::random_device{}());
-    std::discrete_distribution<int> dist(legal_probs.begin(), legal_probs.end());
-    return dist(gen);
-}
-should remove or change for somthing else
-*/
-
-void NNGo::trainOnEpisodes(const std::vector<memstep>& episodes, CellState winner) {
+void NNGo::trainOnEpisodes(const std::vector<memstep>& episodes, CellState winner, double finalMargin) {
     for (const memstep& step : episodes) {
+        if (step.action < 0 || step.action >= OUTPUT_SIZE) continue;
         forwardPropagate(step.state);
-
         std::vector<double> y_true(OUTPUT_SIZE, 0.0);
         y_true[step.action] = 1.0;
 
-        double reward = (step.player == winner) ? 1.0 : 0.0;
+        // base out come evalution
+        double baseReward = (step.player == winner) ? 2.0 : -2.0;
+
+        double marginBonus = (step.player == BLACK_STONE) ? finalMargin : -finalMargin;
+        
+        double reward = baseReward + (marginBonus * 0.05);
+        
+        // non linear scaling for the amount of captures made(captures)
+        if(step.captsMade > 0) {
+            reward += step.captsMade * 1.5;
+            if (step.captsMade > 1) {
+                reward += (step.captsMade * step.captsMade) * 0.8;
+            }
+        }
+        // non linear scaling for the amount of stones lost(stones captured by the opponent)
+        if(step.stonesLost > 0) {
+            reward -= step.stonesLost * 1.0;
+            if (step.stonesLost > 2) {
+                reward -= (step.stonesLost * step.stonesLost) * 0.8;
+            }
+        }
+        reward += step.connections * 0.05;
+        reward -= 1;
+
+        reward = std::max(-10.0, std::min(10.0, reward));
+        
         backwardPropagate(y_true, reward);
     }
 }
