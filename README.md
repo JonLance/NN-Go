@@ -1,4 +1,2 @@
-Credit to the olcPixelGameEngine for the grapics.
-The goal is to make a Nurael Network that will be able to tell you the mistacs that you made at the end of every game and to learn the rules of the game through wieting the moves and points of each move for it to find new straegs 
-the front end will have a start menu and will alow you to chose a board 9x9, 13x13, and the standerd of 19x19.
-The NN will learn through simuladed games agenst another AI or human and will save its wheights in a pdf or other file for optimisation this a solo project with no AI in the making of this project.
+for the grapics i used SDL3 and the app insted of using a int main for the newness of using it and it was fun.
+the ai was made with the relu deep neural network in mind the start of it was hard but got easer the more i made then i had to change it to the 3d vectors so it can make better distions then throwing darts at a strat line now it is just trying to do better with knowing how a 2d board works but i did not make a distion tree from running out of time.
