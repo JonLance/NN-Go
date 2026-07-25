@@ -452,7 +452,7 @@ void NNGo::backwardPropagate(const std::vector<double>& y_true, double reward, c
                         }
                     }
 
-                    d += delta_hidden[l+1][inch][r][c]; // ✅ Fixed typo to use local delta_hidden
+                    d += delta_hidden[l+1][inch][r][c]; 
                     d *= relu_derivative(hidden[l][inch][r][c]);
 
                     if (d > 5.0) d = 5.0;
