@@ -1,2 +1,6 @@
 for the grapics i used SDL3 and the app insted of using a int main for the newness of using it and it was fun.
 the ai was made with the relu deep neural network in mind the start of it was hard but got easer the more i made then i had to change it to the 3d vectors so it can make better distions then throwing darts at a strat line now it is just trying to do better with knowing how a 2d board works but i did not make a distion tree from running out of time.
+To run the NN go first run the traing.cpp file to for tthe model_weights.txt to be made the training will be updated after every ten games you can stop training at any time.
+to run the front.cpp file you need to have the model_weights.txt file in the same directory as the front.cpp file to run the file use g++ front.cpp -o front.exe -I "copy the  file link to\include" -L "copy the  file link to \lib" -lSDL3 this would let you compile the front.cpp file and link it with the SDL3 library.
+The purpose of the project is to how to make a neural network in c++ from my experence i have in making them in python and to have a better understanding of how they work and see why it is hard to make a neural network to play go that is okay at it.
+
